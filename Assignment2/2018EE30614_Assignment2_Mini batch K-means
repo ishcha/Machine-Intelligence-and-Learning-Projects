@@ -1,0 +1,238 @@
+#!/usr/bin/env python
+# coding: utf-8
+
+# In[1]:
+
+
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D
+import random
+
+print('Libraries imported.')
+
+
+# In[2]:
+
+
+data = pd.read_csv('Banknote-authentication-dataset-.csv')
+
+
+# ## Normalizing the data
+
+# In[3]:
+
+
+mean = np.mean(data, 0)
+print(mean)
+
+
+# In[4]:
+
+
+min_col = np.min(data, 0)
+max_col = np.max(data, 0)
+print(min_col, max_col)
+
+
+# In[5]:
+
+
+data_norm = (data - min_col)/(max_col - min_col)
+print(data_norm.shape)
+
+
+# In[6]:
+
+
+data = data_norm.sample(frac = 1).reset_index(drop = True)
+print(data.shape)
+data = data.to_numpy()
+
+
+# ## Scatter plot of data
+
+# In[7]:
+
+
+
+#print(type(data), data.shape)
+
+fig = plt.figure(1, figsize = (10, 10))
+plt.scatter(data[:, 0], data[:, 1]) 
+plt.xlabel('V1')
+plt.ylabel('V2')
+plt.title('Scatter plot of the data')
+plt.show()
+
+
+# ## Starting off with Mini batch K-Means clustering
+
+# ### Hyperparameters
+
+# In[11]:
+
+
+k = 3 # no. of clusters
+b = 200 #size of the mini-batches
+iterations = 100 #no. of iterations of K-means to get to the best clusters: in one pass of finding the right clusters, given the initial cluster centers
+
+
+# ### K-Means method:
+
+# In[12]:
+
+
+def get_random_rows(x, b):
+    if (b <= x.shape[0]):
+        index = np.random.randint(0, len(x), b)
+        return x[index]
+    else:
+        return None
+
+
+# In[13]:
+
+
+def find_nearest_center(C, x):
+    dists = [np.linalg.norm(x - c) for c in C]
+    i = np.argmin(dists)
+    return i
+
+
+# In[14]:
+
+
+def distortion_function(X, C, d):
+    dist = [np.linalg.norm(X[i] - C[d[i]]) for i in range(X.shape[0])]
+    return np.sum(dist)
+
+
+# In[21]:
+
+
+def plot_clusters(X, C, d):
+    color = {0:'red', 1:'blue', 2: 'green'}
+    d1 = pd.DataFrame(d)
+    plt.scatter(X[:, 0], X[:, 1], c = list(map(lambda x: color[x], d)))
+                
+    for i in range(C.shape[0]):
+        plt.scatter(C[i, 0], C[i, 1], s = 300, c = color[i], edgecolors = 'k', marker = 'X')
+        
+    plt.xlabel('V1')
+    plt.ylabel('V2')
+    plt.show()
+
+
+# In[22]:
+
+
+C = get_random_rows(data, k)
+#print(C)
+
+d1 = [find_nearest_center(C, x) for x in data]
+old_distortion = distortion_function(data, C, d1)
+print('Initial distortion loss function: {0:.2f}'.format(old_distortion))
+plot_clusters(data, C, d1)
+
+
+for i in range(iterations):
+    M = get_random_rows(data, b)
+    d = [find_nearest_center(C, x) for x in M]
+    V, count = np.unique(d, return_counts = True)
+    for j in range(0, k):
+        if j in V:
+            index = [x for x in range(len(d)) if d[x] == j]
+            #print("Index:", index, "Count:", count)
+            A = np.array([np.sum(M[index], axis =0)])
+            C[j] = A/count[np.where(V==j)[0]]
+    d1 = [find_nearest_center(C, x) for x in data]
+    new_distortion = distortion_function(data, C, d1)
+    print('After {0}th iteration, the distortion loss function is {1:.2f}, with an improvement of {2:.2f}'.format(i, new_distortion, (old_distortion-new_distortion)))
+    old_distortion = new_distortion
+    print("Cluster:", C)
+    plot_clusters(data, C, d1)
+
+
+# In[16]:
+
+
+def get_best_clusters(data, k):
+    Clusters = []
+    distortions = []
+    for h in range(50):
+        C = get_random_rows(data, k)
+        
+        for i in range(iterations):
+            M = get_random_rows(data, b)
+            d = [find_nearest_center(C, x) for x in M]
+            V, count = np.unique(d, return_counts = True)
+            for j in range(0, k):
+                if j in V:
+                    index = [x for x in range(len(d)) if d[x] == j]
+                    A = np.array([np.sum(M[index], axis =0)])
+                    C[j] = A/count[np.where(V==j)[0]]
+        
+        d1 = [find_nearest_center(C, x) for x in data]
+        distortion = distortion_function(data, C, d1)
+        distortions.append(distortion)
+        Clusters.append(C)
+        
+    b1 = np.argmin(np.array(distortions))
+    print("Least Distortion observed: ", distortions[b1])
+    #print(distortions)
+    C = Clusters[b1]
+    print("Cluster Centers:", C)
+    d1 = [find_nearest_center(C, x) for x in data]
+    plot_clusters(data, C, d1)
+
+
+# In[17]:
+
+
+get_best_clusters(data, k)
+
+
+# In[18]:
+
+
+def elbow_plot(data):
+    no_Clusters = []
+    distortions = []
+    for k1 in range(1, 11, 1):
+        C = get_random_rows(data, k1)
+        
+        for i in range(iterations):
+            M = get_random_rows(data, b)
+            d = [find_nearest_center(C, x) for x in M]
+            V, count = np.unique(d, return_counts = True)
+            for j in range(0, k):
+                if j in V:
+                    index = [x for x in range(len(d)) if d[x] == j]
+                    A = np.array([np.sum(M[index], axis =0)])
+                    C[j] = A/count[np.where(V==j)[0]]
+        
+        d1 = [find_nearest_center(C, x) for x in data]
+        distortion = distortion_function(data, C, d1)
+        distortions.append(distortion)
+        no_Clusters.append(k1)
+        
+    plt.plot(no_Clusters, distortions)
+    plt.xlabel('Number of clusters')
+    plt.ylabel('Distortion values')
+    plt.title('Elbow Plot')
+    plt.show()
+
+
+# In[20]:
+
+
+elbow_plot(data)
+
+
+# In[ ]:
+
+
+
+

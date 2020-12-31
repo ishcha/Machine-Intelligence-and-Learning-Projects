@@ -1,0 +1,204 @@
+#!/usr/bin/env python
+# coding: utf-8
+
+# # GMM using the EM Algorithm
+# ## Applied on the Old Faithful Geyser Dataset 
+
+# In[6]:
+
+
+import numpy as np
+import pandas as pd
+#import matplotlib
+import matplotlib.pyplot as plt
+get_ipython().run_line_magic('matplotlib', 'inline')
+
+import warnings
+warnings.filterwarnings("ignore", module = "matplotlib")
+
+
+# In[7]:
+
+
+data = np.loadtxt('Documents/Old_faithful_geyser_dataset')
+
+
+# In[8]:
+
+
+plt.figure(figsize = [12,12])
+plt.scatter(data[:, 0], data[:, 1])
+plt.xlabel('Eruption duration (in minutes)')
+plt.ylabel('Waiting time (in minutes)')
+plt.show()
+
+
+# ## Normalizing the data
+
+# In[9]:
+
+
+def Normalize(data):
+    data_norm = np.zeros(data.shape)
+    data_norm[:, 0] = (data[:, 0] - np.amin(data[:, 0]))/(np.amax(data[:, 0]) - np.amin(data[:, 0]))
+    data_norm[:, 1] = (data[:, 1] - np.amin(data[:, 1]))/(np.amax(data[:, 1]) - np.amin(data[:, 1]))
+    return data_norm
+
+
+# In[10]:
+
+
+data_norm = Normalize(data)
+
+
+# In[11]:
+
+
+plt.figure(figsize = [12,12])
+plt.scatter(data_norm[:, 0], data_norm[:, 1])
+plt.xlabel('Eruption duration (in minutes)')
+plt.ylabel('Waiting time (in minutes)')
+plt.title('Normalized data')
+plt.show()
+
+
+# ## Log likelihood for the GMM
+
+# means.shape = [no. of components, no. of features in data[i] ] 
+# 
+# covs.shape = [no. of components, no. of features in data[i], no. of features in data[i] ]
+# 
+# mixing_coeffs.shape = [no. of components, 1]
+# 
+# responsibilities.shape = [no. of training samples, no. of components] 
+# 
+# data.shape = [no. of training samples, no. of features in data[i] ]
+
+# In[12]:
+
+
+from scipy.stats import multivariate_normal
+
+def gmm_log_likelihood(X, means, covs, mixing_coeffs):
+    log_likelihood = 0
+    for i in range(X.shape[0]):
+        sum1 = 0
+        for j in range(len(mixing_coeffs)):
+            sum1 += mixing_coeffs[j][0] * multivariate_normal.pdf(X[i], mean = means[j], cov = covs[j])
+        log_likelihood += np.log(sum1)
+    return log_likelihood
+
+
+# ## The Expectation step for the EM Algorithm
+
+# In[13]:
+
+
+def E_step(X, means, covs, mixing_coeffs):
+    responsibilities = np.zeros((X.shape[0], len(mixing_coeffs)))
+    
+    for i in range(X.shape[0]):
+        c = 0
+        for j in range(len(mixing_coeffs)):
+            responsibilities[i, j] = mixing_coeffs[j][0] * multivariate_normal.pdf(X[i], means[j], covs[j])
+            c += mixing_coeffs[j][0] * multivariate_normal.pdf(X[i], means[j], covs[j])
+        responsibilities[i, :] /= c 
+        
+    return responsibilities
+
+
+# ## Maximization step for the EM Algorithm
+
+# In[18]:
+
+
+def M_step(X, responsibilities): 
+    
+    means = (np.dot(responsibilities.T, X).T/ np.sum(responsibilities, axis = 0)).T
+    
+    covs = np.zeros((responsibilities.shape[1], X.shape[1], X.shape[1]))
+    
+    for j in range(responsibilities.shape[1]):
+        sum1 = np.zeros((X.shape[1], X.shape[1]))
+        sum_res = 0
+        for i in range(X.shape[0]):
+            a = X[i] - means[j]
+            sum1 += responsibilities[i][j] * np.outer(a.T, a)
+            sum_res += responsibilities[i][j]
+        covs[j, :, :] = sum1/sum_res
+    
+    mixing_coeffs = (np.sum(responsibilities, axis = 0).T/X.shape[0]).reshape((responsibilities.shape[1], 1))
+    
+    return means, covs, mixing_coeffs
+
+
+# ## Helper function to visualize the data
+
+# In[19]:
+
+
+import seaborn as sb
+sb.set_style('whitegrid')
+import matplotlib.mlab as ml
+
+def plot(X, responsibilities, means, covs, mixing_coeffs):
+    plt.figure(figsize = [6, 6])
+    p = np.array(sb.color_palette('bright', n_colors = 3))[[0, 1]]
+    color = responsibilities.dot(p)
+    plt.scatter(X[:, 0], X[:, 1], c = color, alpha = 0.5)
+    for i, m in enumerate(means):
+        plt.scatter(m[0], m[1], s = 300, marker = 'X', c = p[i], edgecolors = 'k', linewidths = 1)
+    a = np.linspace(0, 1, 50)
+    b = np.linspace(0, 1, 50)
+    x, y = np.meshgrid(a, b)
+    for j in range(len(mixing_coeffs)):
+        x1 = x-means[j][0]
+        y1 = y-means[j][1]
+        rho = covs[j][0,1]/(np.sqrt(covs[j][0, 0])* np.sqrt(covs[j][1, 1]))
+        P = x1**2/covs[j][0, 0] + y1**2/covs[j][1, 1] - 2*rho*x1*y1/(np.sqrt(covs[j][0, 0])* np.sqrt(covs[j][1, 1]))
+        den = 2*np.pi*(np.sqrt(covs[j][0, 0])* np.sqrt(covs[j][1, 1]))*np.sqrt(1-rho**2)
+        z = np.exp(-P/(2*(1-rho**2))) / den
+        plt.contour(x, y, z, 2, colors = 'k')
+    plt.xlabel('Eruption duration (in minutes)')
+    plt.ylabel('Waiting time (in minutes)')
+    plt.xlim(0, 1)
+    plt.ylim(0, 1)
+    plt.show()
+
+
+# ## Running the EM Algorithm
+
+# In[21]:
+
+
+max_iter = 20
+
+means= [[0.2, 0.3], [0.6, 0.8]]
+covs= [0.5*np.eye(2), 0.5*np.eye(2)]
+mixing_coeffs = [[0.5], [0.5]]
+
+old_log_lik = gmm_log_likelihood(data_norm, means, covs, mixing_coeffs)
+responsibilities = E_step(data_norm, means, covs, mixing_coeffs)
+print('Initially, log likelihood is {0}'.format(old_log_lik))
+plot(data_norm, responsibilities, means, covs, mixing_coeffs)
+
+for i in range(max_iter):
+    means, covs, mixing_coeffs = M_step(data_norm, responsibilities)
+    new_log_lik = gmm_log_likelihood(data_norm, means, covs, mixing_coeffs)
+    print('After iteration {0}, log likelihood is {1:.2f}, with improvement {2:.2f}'.format(i, new_log_lik, (new_log_lik - old_log_lik)))
+    plot(data_norm, responsibilities, means, covs, mixing_coeffs)
+    if new_log_lik - old_log_lik < 1e-3:
+        break
+    old_log_lik = new_log_lik
+    responsibilities = E_step(data_norm, means, covs, mixing_coeffs)
+
+
+# In[14]:
+
+
+print("Means: ", means)
+print("Covariance Matrix: ", covs)
+print("Mixing Coefficients: ", mixing_coeffs)
+
+
+# ### So finally the means, covariances and mixing coefficients obtained are listed above. The steps involved in the procedure of convergence of the algorithm are illustrated.

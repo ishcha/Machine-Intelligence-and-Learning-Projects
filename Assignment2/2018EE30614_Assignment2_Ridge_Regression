@@ -1,0 +1,334 @@
+#!/usr/bin/env python
+# coding: utf-8
+
+# # Classifying Handwritten 0's and 1's using Ridge Regression
+# 
+# ### Importing the requisite libraries
+
+# In[18]:
+
+
+import random
+import numpy as np
+import warnings
+from matplotlib import pyplot as plt
+get_ipython().run_line_magic('matplotlib', 'inline')
+warnings.filterwarnings('ignore')
+
+print('Libraries imported')
+
+
+# ## Helper functions
+
+# In[19]:
+
+
+def get_random_batch(x, y, batch_size):
+    num_features = x.shape[1]
+    num_total = x.shape[0]
+    X = np.zeros((batch_size, num_features))
+    Y = np.zeros((batch_size, 1))
+
+    indices = np.random.randint(0, num_total, batch_size)
+    
+    for i, index in enumerate(indices):
+        X[i] = np.reshape(x[index], (num_features,))
+        Y[i] = np.array(y[index])
+
+    return X, Y
+
+
+# In[20]:
+
+
+def randomize_data(x, y):
+    return get_random_batch(x, y, x.shape[0])
+
+
+# ## Setting the Hyperparameters
+
+# In[41]:
+
+
+lr = 0.3
+batch_size = 300
+epochs = 20
+
+
+# ## Importing the Dataset
+
+# In[22]:
+
+
+def get_01_samples(x, y):
+    is_zero = np.where(y == 0)
+    is_one = np.where(y == 1)
+    x_zeros = x[is_zero]
+    x_ones = x[is_one]
+    x_data = np.concatenate((x_zeros, x_ones), axis = 0)
+    y_data = np.array([0]*x_zeros.shape[0] + [1]*x_ones.shape[0])
+    return x_data/255., y_data
+
+
+# In[23]:
+
+
+data_train = np.genfromtxt('MNIST/mnist_train.csv', delimiter =',')
+X_train = data_train[:, 1:]
+Y_train = data_train[:, 0]
+(X_train, Y_train) = get_01_samples(X_train, Y_train)
+print("Done.")
+
+
+# In[24]:
+
+
+data_test = np.genfromtxt('MNIST/mnist_test.csv', delimiter =',')
+X_test = data_test[:, 1:]
+Y_test = data_test[:, 0]
+(X_test, Y_test) = get_01_samples(X_test, Y_test)
+print("Done.")
+
+
+# In[25]:
+
+
+print('Shape of X_train:', X_train.shape)
+print('Shape of Y_train:', Y_train.shape)
+print('Shape of X_test:', X_test.shape)
+print('Shape of Y_test:', Y_test.shape)
+
+
+# In[26]:
+
+
+x_show = np.reshape(X_train[0], (28, 28))
+plt.imshow(x_show, cmap= 'binary')
+print( Y_train[0])
+plt.show()
+
+
+# In[27]:
+
+
+x_show = np.reshape(X_train[-1], (28, 28))
+plt.imshow(x_show, cmap= 'binary')
+print( Y_train[-1])
+plt.show()
+
+
+# ## Randomizing the data
+
+# In[28]:
+
+
+X_train, Y_train = randomize_data(X_train, Y_train)
+X_test, Y_test = randomize_data(X_test, Y_test)
+print(X_train.shape)
+
+
+# In[29]:
+
+
+x_show = np.reshape(X_train[0], (28, 28))
+plt.imshow(x_show, cmap= 'binary')
+print( Y_train[0])
+plt.show()
+
+
+# In[30]:
+
+
+x_show = np.reshape(X_train[100], (28, 28))
+plt.imshow(x_show, cmap= 'binary')
+print( Y_train[100])
+plt.show()
+
+
+# ## Creating the Logistic Model
+
+# In[31]:
+
+
+class LogisticModel:
+    def __init__(self, num_features):
+        self.W = np.reshape(np.random.randn((num_features)), (num_features, 1))
+        self.b = np.zeros((1, 1))
+        self.num_features = num_features
+        self.losses = []
+        self.accuracies = []
+        
+    def summary(self):
+        print('=================================')
+        print('Number of features:', self.num_features)
+        print('Shape of weights:', self.W.shape)
+        print('Shape of biases:', self.b.shape)
+        print('=================================')
+        
+model = LogisticModel(num_features=784)
+model.summary()
+
+
+# ## Forward Pass
+
+# In[32]:
+
+
+class LogisticModel(LogisticModel):
+    def _forward_pass(self, X, Y=None):
+        batch_size = X.shape[0]
+        Z = np.dot(X, self.W) + self.b
+        A = 1. / (1. + np.exp(-Z))
+        loss = float(1e5)
+        if Y is not None:
+            loss = -1 * np.sum(np.dot(np.transpose(Y), np.log(A)) + np.dot(np.transpose(1-Y), np.log(1-A))) 
+            loss /= batch_size
+        return A, loss
+
+
+# ## Backward Pass
+
+# In[33]:
+
+
+class LogisticModel(LogisticModel):
+    def _backward_pass(self, A, X, Y, a):
+        batch_size = X.shape[0]
+        dZ = A - Y
+        dW = (np.dot(np.transpose(X), dZ) + a*self.W)/batch_size
+        db = np.sum(dZ)/batch_size
+        return dW, db
+
+
+# ## Update Parameters
+
+# In[34]:
+
+
+class LogisticModel(LogisticModel):
+    def _update_params(self, dW, db, lr):
+        self.W -= lr * dW
+        self.b -= lr * db
+
+
+# ## Checking Model Performance
+
+# In[35]:
+
+
+class LogisticModel(LogisticModel):
+    def predict(self, X, Y=None):
+        A, loss = self._forward_pass(X, Y)
+        Y_hat = A > 0.5
+        return np.squeeze(Y_hat), loss
+    
+    def evaluate(self, X, Y):
+        Y_hat, loss = self.predict(X, Y)
+        accuracy = np.sum(Y_hat == np.squeeze(Y)) / X.shape[0]
+        return accuracy, loss
+
+
+# In[36]:
+
+
+model = LogisticModel(num_features=784)
+
+model.summary()
+X, Y = get_random_batch(X_test, Y_test, batch_size)
+acc, loss = model.evaluate(X, Y)
+print('Untrained model accuracy: {}, loss:{}'.format(acc, loss))
+
+
+# ## Training Loop
+
+# In[40]:
+
+
+class LogisticModel(LogisticModel):
+    def train(self, batch_size, lr, a, iterations, X_train, Y_train, X_test, Y_test):
+
+        print('Training..')
+        self.accuracies_tra = []
+        self.losses_tra = []
+        
+        for i in range(0, epochs):
+            X_train, Y_train = randomize_data(X_train, Y_train)
+            j = 0
+            m = X_train.shape[0]
+            while j+batch_size < m:
+                X, Y = X_train[j:j+batch_size], Y_train[j:j+batch_size]
+                A, _ = self._forward_pass(X, Y)  
+                dW, db = self._backward_pass(A, X, Y, a)
+                self._update_params(dW, db, lr)
+                j += batch_size
+            X, Y = X_train[j:m], Y_train[j:m]
+            A, _ = self._forward_pass(X, Y)  
+            dW, db = self._backward_pass(A, X, Y, a)
+            self._update_params(dW, db, lr)
+            
+            tra_acc, tra_loss = self.evaluate(X_train, Y_train)
+            self.accuracies_tra.append(tra_acc)
+            self.losses_tra.append(tra_loss)
+            
+            print('Iter: {}, Training Acc: {:.3f}, Training Loss: {:.3f}'.format(i, tra_acc, tra_loss))
+            
+        val_acc, val_loss = self.evaluate(X_test, Y_test)
+            
+        print('Alpha: {}, Val Acc: {:.3f}, Val Loss: {:.3f}'.format(a, val_acc, val_loss))
+            
+        print('Training finished.')
+        return val_loss, self.losses_tra[-1]
+
+
+# # Task 10: Training the Model
+
+# In[44]:
+
+
+X_val = X_train[9665:12665]
+Y_val = Y_train[9665:12665]
+X_train1 = X_train[0:9665]
+Y_train1 = Y_train[0:9665]
+D = np.arange(0, 5, 0.5)
+val_error = []
+tra_error = []
+for i in D:
+    model = LogisticModel(num_features=784)
+    print('Before training performance:', model.evaluate(X_train1, Y_train1))
+    print('Before training test performance:', model.evaluate(X_test, Y_test))
+    a, b = model.train(
+        batch_size,
+        lr, 
+        i, 
+        epochs,
+        X_train1, Y_train1,
+        X_val, Y_val
+    )
+    val_error.append(a)
+    tra_error.append(b)
+    print('After training performance:', model.evaluate(X_test, Y_test))
+
+
+# In[45]:
+
+
+plt.plot(D, val_error, 'r', D, tra_error, 'b')
+plt.xlabel('Regularization parameter')
+plt.ylabel('Training/ Validation loss')
+plt.title('Regularization parameter vs Loss')
+plt.legend(["Validation loss", "Training loss"])
+plt.show()
+
+
+# In[46]:
+
+
+h = np.argmin(val_error)
+D[h]
+
+
+# In[ ]:
+
+
+
+
